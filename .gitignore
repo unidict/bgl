@@ -1,4 +1,4 @@
-*.xcuserstate
+xcuserdata/
 .claude/
 
 # CMake
