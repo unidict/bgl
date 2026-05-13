@@ -19,6 +19,20 @@ extern "C" {
 #endif
 
 // ============================================================
+// Status Codes
+// ============================================================
+
+typedef enum {
+    BGL_OK                = 0,
+    BGL_END               = 1,
+
+    BGL_ERR_INVALID_PARAM = -1,
+    BGL_ERR_IO            = -2,
+    BGL_ERR_FORMAT        = -3,
+    BGL_ERR_MEMORY        = -4
+} bgl_status;
+
+// ============================================================
 // Data Types
 // ============================================================
 
@@ -141,13 +155,10 @@ bgl_entry_iterator *bgl_entry_iterator_create(bgl_reader *reader);
 /**
  * @brief Get next entry
  * @param iter Entry iterator
- * @return Pointer to current entry (owned by iterator), NULL on end or failure
- *
- * The returned entry is owned by the iterator and valid until:
- * - The next call to bgl_entry_iterator_next()
- * - bgl_entry_iterator_free() is called
+ * @param out_entry Output: pointer to current entry (owned by iterator, valid until next call)
+ * @return BGL_OK on success, BGL_END if no more entries, BGL_ERR_* on error
  */
-const bgl_entry *bgl_entry_iterator_next(bgl_entry_iterator *iter);
+bgl_status bgl_entry_iterator_next(bgl_entry_iterator *iter, const bgl_entry **out_entry);
 
 /**
  * @brief Free entry iterator
@@ -171,13 +182,10 @@ bgl_resource_iterator *bgl_resource_iterator_create(bgl_reader *reader);
 /**
  * @brief Get next resource
  * @param iter Resource iterator
- * @return Pointer to current resource (owned by iterator), NULL on end or failure
- *
- * The returned resource is owned by the iterator and valid until:
- * - The next call to bgl_resource_iterator_next()
- * - bgl_resource_iterator_free() is called
+ * @param out_resource Output: pointer to current resource (owned by iterator, valid until next call)
+ * @return BGL_OK on success, BGL_END if no more resources, BGL_ERR_* on error
  */
-const bgl_resource *bgl_resource_iterator_next(bgl_resource_iterator *iter);
+bgl_status bgl_resource_iterator_next(bgl_resource_iterator *iter, const bgl_resource **out_resource);
 
 /**
  * @brief Free resource iterator

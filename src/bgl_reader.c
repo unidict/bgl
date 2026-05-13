@@ -126,7 +126,7 @@ struct bgl_resource_iterator {
 // Forward Declarations
 // ============================================================
 
-static bgl_block *bgl_read_block(bgl_reader *reader);
+static bgl_status bgl_read_block(bgl_reader *reader, bgl_block **out_block);
 static void bgl_free_block(bgl_block *block);
 static int bgl_load_info(bgl_reader *reader);
 static int bgl_seek_to_entries(bgl_reader *reader);
@@ -304,9 +304,10 @@ static int bgl_load_info(bgl_reader *reader) {
     // Some BGL files have info blocks scattered throughout, even at the end
     bool found_first_entry = false;
     while (true) {
-        bgl_block *block = bgl_read_block(reader);
-        if (!block) {
-            break;  // EOF or error
+        bgl_block *block;
+        bgl_status status = bgl_read_block(reader, &block);
+        if (status != BGL_OK) {
+            break;
         }
 
         // Record the position of the first entry block
@@ -534,15 +535,16 @@ static int bgl_seek_to_resources(bgl_reader *reader) {
 // Block Reading
 // ============================================================
 
-static bgl_block *bgl_read_block(bgl_reader *reader) {
-    if (!reader || !reader->gzf) {
-        return NULL;
+static bgl_status bgl_read_block(bgl_reader *reader, bgl_block **out_block) {
+    if (!reader || !reader->gzf || !out_block) {
+        return BGL_ERR_INVALID_PARAM;
     }
+    *out_block = NULL;
 
     // Allocate block structure
     bgl_block *block = (bgl_block *)calloc(1, sizeof(bgl_block));
     if (!block) {
-        return NULL;
+        return BGL_ERR_MEMORY;
     }
 
     // Record block start position (before reading any bytes, consistent with Python)
@@ -552,9 +554,10 @@ static bgl_block *bgl_read_block(bgl_reader *reader) {
     uint8_t first_byte;
     int bytes_read = gzread(reader->gzf, &first_byte, 1);
     if (bytes_read != 1) {
-        // EOF
         bgl_free_block(block);
-        return NULL;
+        int err;
+        gzerror(reader->gzf, &err);
+        return (err == Z_OK || err == Z_STREAM_END) ? BGL_END : BGL_ERR_IO;
     }
 
     // Parse type and length encoding
@@ -574,7 +577,7 @@ static bgl_block *bgl_read_block(bgl_reader *reader) {
         bytes_read = gzread(reader->gzf, extra_len, (unsigned int)extra_bytes);
         if (bytes_read != (int)extra_bytes) {
             bgl_free_block(block);
-            return NULL;  // Read failed
+            return BGL_ERR_IO;
         }
 
         // Parse length (big-endian)
@@ -589,21 +592,22 @@ static bgl_block *bgl_read_block(bgl_reader *reader) {
         block->data = (uint8_t *)malloc(data_size + 1);  // +1 for null terminator
         if (!block->data) {
             bgl_free_block(block);
-            return NULL;
+            return BGL_ERR_MEMORY;
         }
 
         // data_size is actual block size, theoretically not exceeding UINT_MAX
         bytes_read = gzread(reader->gzf, block->data, (unsigned int)data_size);
         if (bytes_read != (int)data_size) {
             bgl_free_block(block);
-            return NULL;
+            return BGL_ERR_IO;
         }
 
         block->data[data_size] = '\0';  // null terminate
         block->data_size = data_size;
     }
 
-    return block;
+    *out_block = block;
+    return BGL_OK;
 }
 
 static void bgl_free_block(bgl_block *block) {
@@ -997,13 +1001,14 @@ bgl_entry_iterator *bgl_entry_iterator_create(bgl_reader *reader) {
     return iter;
 }
 
-const bgl_entry *bgl_entry_iterator_next(bgl_entry_iterator *iter) {
-    if (!iter || !iter->reader) {
-        return NULL;
+bgl_status bgl_entry_iterator_next(bgl_entry_iterator *iter, const bgl_entry **out_entry) {
+    if (!iter || !iter->reader || !out_entry) {
+        return BGL_ERR_INVALID_PARAM;
     }
+    *out_entry = NULL;
 
     if (iter->finished) {
-        return NULL;
+        return BGL_END;
     }
 
     // Free previous entry data
@@ -1011,10 +1016,11 @@ const bgl_entry *bgl_entry_iterator_next(bgl_entry_iterator *iter) {
     memset(&iter->current, 0, sizeof(bgl_entry));
 
     while (true) {
-        bgl_block *block = bgl_read_block(iter->reader);
-        if (!block) {
+        bgl_block *block;
+        bgl_status status = bgl_read_block(iter->reader, &block);
+        if (status != BGL_OK) {
             iter->finished = true;
-            return NULL;
+            return status;
         }
 
         // Only process entry types
@@ -1027,22 +1033,23 @@ const bgl_entry *bgl_entry_iterator_next(bgl_entry_iterator *iter) {
             bgl_free_block(block);
 
             if (ret == 0) {
-                return &iter->current;
+                *out_entry = &iter->current;
+                return BGL_OK;
             }
+            return BGL_ERR_FORMAT;
         } else if (block->type == BGL_BLOCK_TYPE_ENTRY_TYPE11) {
             int ret = bgl_parse_entry_type11(iter->reader, block, &iter->current);
             bgl_free_block(block);
 
             if (ret == 0) {
-                return &iter->current;
+                *out_entry = &iter->current;
+                return BGL_OK;
             }
+            return BGL_ERR_FORMAT;
         } else {
             bgl_free_block(block);
         }
     }
-
-    iter->finished = true;
-    return NULL;
 }
 
 void bgl_entry_iterator_free(bgl_entry_iterator *iter) {
@@ -1079,13 +1086,14 @@ bgl_resource_iterator *bgl_resource_iterator_create(bgl_reader *reader) {
     return iter;
 }
 
-const bgl_resource *bgl_resource_iterator_next(bgl_resource_iterator *iter) {
-    if (!iter || !iter->reader) {
-        return NULL;
+bgl_status bgl_resource_iterator_next(bgl_resource_iterator *iter, const bgl_resource **out_resource) {
+    if (!iter || !iter->reader || !out_resource) {
+        return BGL_ERR_INVALID_PARAM;
     }
+    *out_resource = NULL;
 
     if (iter->finished) {
-        return NULL;
+        return BGL_END;
     }
 
     // Free previous resource data
@@ -1093,10 +1101,11 @@ const bgl_resource *bgl_resource_iterator_next(bgl_resource_iterator *iter) {
     memset(&iter->current, 0, sizeof(bgl_resource));
 
     while (true) {
-        bgl_block *block = bgl_read_block(iter->reader);
-        if (!block) {
+        bgl_block *block;
+        bgl_status status = bgl_read_block(iter->reader, &block);
+        if (status != BGL_OK) {
             iter->finished = true;
-            return NULL;
+            return status;
         }
 
         if (block->type == BGL_BLOCK_TYPE_RESOURCE) {
@@ -1104,15 +1113,17 @@ const bgl_resource *bgl_resource_iterator_next(bgl_resource_iterator *iter) {
             bgl_free_block(block);
 
             if (ret == 0) {
-                return &iter->current;
+                *out_resource = &iter->current;
+                return BGL_OK;
             }
+            return BGL_ERR_FORMAT;
         } else {
             bgl_free_block(block);
         }
     }
 
     iter->finished = true;
-    return NULL;
+    return BGL_END;
 }
 
 void bgl_resource_iterator_free(bgl_resource_iterator *iter) {

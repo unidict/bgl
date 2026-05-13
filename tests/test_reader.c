@@ -173,8 +173,8 @@ void test_reader_entry_iterator_first_entry(void) {
     bgl_entry_iterator *it = bgl_entry_iterator_create(r);
     TEST_ASSERT_NOT_NULL(it);
 
-    const bgl_entry *e = bgl_entry_iterator_next(it);
-    TEST_ASSERT_NOT_NULL(e);
+    const bgl_entry *e;
+    TEST_ASSERT_EQUAL(BGL_OK, bgl_entry_iterator_next(it, &e));
     TEST_ASSERT_EQUAL_STRING("A Doll's House", e->word);
     TEST_ASSERT_NOT_NULL(e->def.body);
     TEST_ASSERT_EQUAL_STRING("小家家", e->def.body);
@@ -188,10 +188,10 @@ void test_reader_entry_with_title_and_pos(void) {
     bgl_reader *r = bgl_reader_open(TEST_BGL_PATH);
     TEST_ASSERT_EQUAL_INT(0, bgl_reader_prepare(r));
     bgl_entry_iterator *it = bgl_entry_iterator_create(r);
-    bgl_entry_iterator_next(it); // skip entry 0
+    bgl_entry_iterator_next(it, &(const bgl_entry *){NULL}); // skip entry 0
 
-    const bgl_entry *e = bgl_entry_iterator_next(it);
-    TEST_ASSERT_NOT_NULL(e);
+    const bgl_entry *e;
+    TEST_ASSERT_EQUAL(BGL_OK, bgl_entry_iterator_next(it, &e));
     TEST_ASSERT_NOT_NULL(strstr(e->word, "A.C."));
     TEST_ASSERT_EQUAL_STRING("交流电", e->def.body);
     TEST_ASSERT_NOT_NULL(e->def.title);
@@ -205,11 +205,11 @@ void test_reader_entry_with_pos(void) {
     bgl_reader *r = bgl_reader_open(TEST_BGL_PATH);
     TEST_ASSERT_EQUAL_INT(0, bgl_reader_prepare(r));
     bgl_entry_iterator *it = bgl_entry_iterator_create(r);
-    bgl_entry_iterator_next(it); // skip 0
-    bgl_entry_iterator_next(it); // skip 1
+    bgl_entry_iterator_next(it, &(const bgl_entry *){NULL}); // skip 0
+    bgl_entry_iterator_next(it, &(const bgl_entry *){NULL}); // skip 1
 
-    const bgl_entry *e = bgl_entry_iterator_next(it);
-    TEST_ASSERT_NOT_NULL(e);
+    const bgl_entry *e;
+    TEST_ASSERT_EQUAL(BGL_OK, bgl_entry_iterator_next(it, &e));
     TEST_ASSERT_NOT_NULL(strstr(e->word, "A.D."));
     TEST_ASSERT_EQUAL_STRING("公元...年", e->def.body);
     TEST_ASSERT_NOT_NULL(e->def.part_of_speech);
@@ -225,12 +225,12 @@ void test_reader_entry_with_alternates(void) {
     bgl_reader *r = bgl_reader_open(TEST_BGL_PATH);
     TEST_ASSERT_EQUAL_INT(0, bgl_reader_prepare(r));
     bgl_entry_iterator *it = bgl_entry_iterator_create(r);
-    bgl_entry_iterator_next(it); // skip 0
-    bgl_entry_iterator_next(it); // skip 1
-    bgl_entry_iterator_next(it); // skip 2
+    bgl_entry_iterator_next(it, &(const bgl_entry *){NULL}); // skip 0
+    bgl_entry_iterator_next(it, &(const bgl_entry *){NULL}); // skip 1
+    bgl_entry_iterator_next(it, &(const bgl_entry *){NULL}); // skip 2
 
-    const bgl_entry *e = bgl_entry_iterator_next(it);
-    TEST_ASSERT_NOT_NULL(e);
+    const bgl_entry *e;
+    TEST_ASSERT_EQUAL(BGL_OK, bgl_entry_iterator_next(it, &e));
     TEST_ASSERT_EQUAL_INT(2, e->alternate_count);
     TEST_ASSERT_EQUAL_STRING("A M", e->alternates[0]);
     TEST_ASSERT_EQUAL_STRING("AM", e->alternates[1]);
@@ -248,10 +248,13 @@ void test_reader_entry_iterator_iterates_all(void) {
     TEST_ASSERT_NOT_NULL(it);
 
     int count = 0;
-    while (bgl_entry_iterator_next(it) != NULL) {
+    const bgl_entry *e;
+    bgl_status status;
+    while ((status = bgl_entry_iterator_next(it, &e)) == BGL_OK) {
         count++;
     }
     TEST_ASSERT_EQUAL_INT(70919, count);
+    TEST_ASSERT_EQUAL(BGL_END, status);
 
     bgl_entry_iterator_free(it);
     bgl_reader_close(r);
@@ -262,8 +265,8 @@ void test_reader_entry_chinese_body_encoding(void) {
     TEST_ASSERT_EQUAL_INT(0, bgl_reader_prepare(r));
     bgl_entry_iterator *it = bgl_entry_iterator_create(r);
 
-    const bgl_entry *e = bgl_entry_iterator_next(it);
-    TEST_ASSERT_NOT_NULL(e);
+    const bgl_entry *e;
+    TEST_ASSERT_EQUAL(BGL_OK, bgl_entry_iterator_next(it, &e));
     TEST_ASSERT_NOT_NULL(e->def.body);
 
     // If encoding is wrong (CP1252 instead of CP936), body would contain
@@ -296,8 +299,8 @@ void test_reader_resource_iterator_first_resource(void) {
     bgl_resource_iterator *it = bgl_resource_iterator_create(r);
     TEST_ASSERT_NOT_NULL(it);
 
-    const bgl_resource *res = bgl_resource_iterator_next(it);
-    TEST_ASSERT_NOT_NULL(res);
+    const bgl_resource *res;
+    TEST_ASSERT_EQUAL(BGL_OK, bgl_resource_iterator_next(it, &res));
     TEST_ASSERT_EQUAL_STRING("8EAF66FD.bmp", res->name);
     TEST_ASSERT_TRUE(res->data_size > 0);
     TEST_ASSERT_EQUAL_UINT8(0x42, res->data[0]); // 'B'
@@ -313,10 +316,10 @@ void test_reader_resource_iterator_html_resource(void) {
     bgl_resource_iterator *it = bgl_resource_iterator_create(r);
     TEST_ASSERT_NOT_NULL(it);
 
-    bgl_resource_iterator_next(it); // skip BMP
+    bgl_resource_iterator_next(it, &(const bgl_resource *){NULL}); // skip BMP
 
-    const bgl_resource *res = bgl_resource_iterator_next(it);
-    TEST_ASSERT_NOT_NULL(res);
+    const bgl_resource *res;
+    TEST_ASSERT_EQUAL(BGL_OK, bgl_resource_iterator_next(it, &res));
     TEST_ASSERT_EQUAL_STRING("C2EEF3F6.html", res->name);
     TEST_ASSERT_TRUE(res->data_size > 0);
     TEST_ASSERT_EQUAL_UINT8('<', res->data[0]);
@@ -333,10 +336,13 @@ void test_reader_resource_iterator_count(void) {
     TEST_ASSERT_NOT_NULL(it);
 
     int count = 0;
-    while (bgl_resource_iterator_next(it) != NULL) {
+    const bgl_resource *res;
+    bgl_status status;
+    while ((status = bgl_resource_iterator_next(it, &res)) == BGL_OK) {
         count++;
     }
     TEST_ASSERT_EQUAL_INT(2, count);
+    TEST_ASSERT_EQUAL(BGL_END, status);
 
     bgl_resource_iterator_free(it);
     bgl_reader_close(r);
